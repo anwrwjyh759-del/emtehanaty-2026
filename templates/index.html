@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>امتحاناتي - مولد الامتحانات الذكي</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Cairo', Arial; padding: 15px; max-width: 700px; margin: auto; background: #f0f2f5; }
+        input, button, select { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
+        button { background: #1d4ed8; color: white; border: none; cursor: pointer; font-weight: bold; }
+      .card { background: white; padding: 20px; border-radius: 12px; margin: 15px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #1d4ed8; text-align: center; }
+     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+     .whatsapp { background: #25D366; text-align: center; display: block; text-decoration: none; color: white; padding: 12px; border-radius: 8px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>امتحاناتي 🚀</h1>
+    <div class="card">
+        <h3>1. فعّل اشتراكك</h3>
+        <p><b>الاشتراك:</b> {{price}}</p>
+        <p><b>أورنج كاش:</b> {{orange_number}}</p>
+        <a class="whatsapp" href="https://wa.me/{{whatsapp_number}}">كلم الدعم على واتساب</a>
+        <input type="text" id="code" placeholder="دخّل كود التفعيل الشهري">
+
+        <h3>2. بيانات الامتحان</h3>
+        <input type="text" id="grade" placeholder="الصف: مثال ثالثة ثانوي">
+        <input type="text" id="lesson" placeholder="اسم الدرس: مثال الفصل الأول">
+        <div class="grid">
+            <input type="number" id="mcq" placeholder="عدد الاختيار من متعدد" value="10">
+            <input type="number" id="essay" placeholder="عدد المقالي" value="3">
+        </div>
+
+        <h3>3. ارفع الكتاب/المذكرة PDF</h3>
+        <input type="file" id="fileInput" accept=".pdf">
+
+        <button onclick="generateExam()">اعمل الامتحان دلوقتي</button>
+    </div>
+
+    <div class="card">
+        <h3>الامتحان الجاهز:</h3>
+        <div id="result" style="white-space: pre-wrap;">مستني بياناتك...</div>
+    </div>
+
+    <script>
+        async function generateExam() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '⏳ جاري توليد الامتحان... ده ممكن ياخد 20 ثانية';
+
+            const formData = new FormData();
+            formData.append('activation_code', document.getElementById('code').value);
+            formData.append('file', document.getElementById('fileInput').files[0]);
+            formData.append('grade', document.getElementById('grade').value);
+            formData.append('lesson', document.getElementById('lesson').value);
+            formData.append('mcq', document.getElementById('mcq').value);
+            formData.append('essay', document.getElementById('essay').value);
+
+            const res = await fetch('/generate', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await res.json();
+            if (data.status === 'success') {
+                resultDiv.innerHTML = data.exam;
+            } else {
+                resultDiv.innerHTML = '❌ ' + data.message;
+            }
+        }
+    </script>
+</body>
+</html>
