@@ -1,0 +1,4 @@
+flask
+cohere
+PyPDF2
+gunicorn
