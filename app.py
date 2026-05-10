@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
+import cohere
 import PyPDF2
 import os
 import io
+import json
 
 app = Flask(__name__)
 CORS(app)
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+co = cohere.Client(os.environ.get("COHERE_API_KEY"))
 ORANGE_CASH_NUMBER = "01289590022"
-SUBSCRIPTION_PRICE = "100 جنيه شهرياً"
+SUBSCRIPTION_PRICE = "100 جنيه في الشهر"
 
 @app.route('/api/generate', methods=['POST'])
 def generate_exam():
@@ -22,10 +23,9 @@ def generate_exam():
         essay_count = int(request.form.get('essayCount', 2))
         activation_code = request.form.get('activationCode')
 
-        # 2. اتأكد من كود التفعيل
         if activation_code!= 'ANWAR2026':
             return jsonify({
-                "error": f"كود التفعيل غير صحيح. سعر الاشتراك {SUBSCRIPTION_PRICE}. للاشتراك حوّل على Orange Cash: {ORANGE_CASH_NUMBER} وبعدين ابعتلنا صورة التحويل على واتساب"
+                "error": f"كود التفعيل غير صحيح. سعر الاشتراك {SUBSCRIPTION_PRICE}. للاشتراك حوّل على Orange Cash: {ORANGE_CASH_NUMBER} وابعتلنا صورة التحويل على واتساب"
             }), 401
 
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_file.read()))
@@ -45,20 +45,21 @@ def generate_exam():
 النص:
 {text_content}
 
-طلع النتيجة JSON بالشكل ده بالظبط:
+طلع النتيجة JSON بالشكل ده بالظبط بدون أي كلام تاني:
 {{"mcq":[{{"q":"السؤال","choices":["أ","ب","ج","د"],"answer":"أ"}}],"essay":[{{"q":"السؤال","answer":"الإجابة النموذجية"}}]}}"""
 
-        response = openai.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+        response = co.chat(
+            model="command-r-plus",
+            message=prompt,
             temperature=0.3,
             max_tokens=1500
         )
+        
+        exam_json = json.loads(response.text)
+        return jsonify(exam_json)
 
-        exam = response.choices[0].message.content
-        return jsonify(exam)
-
+    except json.JSONDecodeError:
+        return jsonify({"error": "الموديل رجع رد مش مظبوط. جرب تاني"}), 500
     except Exception as e:
         print(e)
         return jsonify({"error": "الملف كبير أو السيرفر مشغول. جرب ملف أصغر"}), 500
