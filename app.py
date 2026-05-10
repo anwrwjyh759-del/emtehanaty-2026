@@ -1,89 +1,67 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import openai
 import PyPDF2
-import cohere
 import os
+import io
 
 app = Flask(__name__)
-co = cohere.Client(os.environ['COHERE_API_KEY'])
+CORS(app)
 
-def extract_text_from_pdf(file):
-    pdf_reader = PyPDF2.PdfReader(file)
-    text = ""
-    # هنقرأ أول 20 صفحة بس
-    max_pages = min(20, len(pdf_reader.pages))
-    for i in range(max_pages):
-        page = pdf_reader.pages[i]
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text + "\n"
-    # Cohere آخره 12 ألف حرف عشان ميضربش
-    return text[:12000]
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+ORANGE_CASH_NUMBER = "01289590022"
+SUBSCRIPTION_PRICE = "100 جنيه شهرياً"
 
-def generate_exam(text, exam_details):
-    prompt = f"""
-    أنت أستاذ خبير في وضع الامتحانات للمناهج المصرية. بناء على النص التالي:
-
-    --- النص ---
-    {text}
-    --- انتهى النص ---
-
-    المطلوب: اعمل امتحان احترافي بالمواصفات دي:
-    1. الصف الدراسي: {exam_details['grade']}
-    2. اسم الدرس: {exam_details['lesson']}
-    3. عدد أسئلة الاختيار من متعدد: {exam_details['mcq']}
-    4. عدد الأسئلة المقالية: {exam_details['essay']}
-
-    شروط مهمة:
-    - الأسئلة من فهم النص مش نسخ لصق
-    - MCQ له 4 اختيارات A, B, C, D
-    - بعد الأسئلة اكتب "نموذج الإجابة" وتحته الحل
-    - نسق الامتحان للطباعة مباشرة
-    - ابدأ بـ "امتحان {exam_details['lesson']} - {exam_details['grade']}"
-    """
-
+@app.route('/api/generate', methods=['POST'])
+def generate_exam():
     try:
-        response = co.chat(
-            model='command-r-plus',
-            message=prompt,
-            temperature=0.4,
-            max_tokens=2000
+        pdf_file = request.files['pdf']
+        grade = request.form.get('grade')
+        lesson = request.form.get('lesson')
+        mcq_count = int(request.form.get('mcqCount', 5))
+        essay_count = int(request.form.get('essayCount', 2))
+        activation_code = request.form.get('activationCode')
+
+        # 2. اتأكد من كود التفعيل
+        if activation_code!= 'ANWAR2026':
+            return jsonify({
+                "error": f"كود التفعيل غير صحيح. سعر الاشتراك {SUBSCRIPTION_PRICE}. للاشتراك حوّل على Orange Cash: {ORANGE_CASH_NUMBER} وبعدين ابعتلنا صورة التحويل على واتساب"
+            }), 401
+
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_file.read()))
+        text_content = ""
+        for page in pdf_reader.pages[:3]:
+            text_content += page.extract_text()
+
+        text_content = text_content[:4000]
+
+        if len(text_content) < 50:
+            return jsonify({"error": "الملف فاضي أو متصور. لازم نص"}), 400
+
+        prompt = f"""انت مدرس شاطر. اعمل امتحان من النص ده.
+الصف: {grade}
+الدرس: {lesson}
+المطلوب: {mcq_count} سؤال اختيار من متعدد بأربع اختيارات. و {essay_count} سؤال مقالي.
+النص:
+{text_content}
+
+طلع النتيجة JSON بالشكل ده بالظبط:
+{{"mcq":[{{"q":"السؤال","choices":["أ","ب","ج","د"],"answer":"أ"}}],"essay":[{{"q":"السؤال","answer":"الإجابة النموذجية"}}]}}"""
+
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo-0125",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=1500
         )
-        return response.text
-    except Exception as e:
-        return f"خطأ: الملف كبير أو السيرفر مشغول. جرب 10 صفحات بس من الدرس"
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/generate', methods=['POST'])
-def generate():
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'ارفع ملف PDF'})
-
-    file = request.files['file']
-    activation_code = request.form.get('activation_code')
-
-    if activation_code!= 'ANWAR2026':
-        return jsonify({'status': 'error', 'message': 'كود التفعيل غلط. كلم الدعم 01289590022'})
-
-    try:
-        text = extract_text_from_pdf(file)
-        if len(text) < 50:
-            return jsonify({'status': 'error', 'message': 'الملف فاضي أو مقدرتش اقرأه'})
-
-        exam_details = {
-            'grade': request.form.get('grade'),
-            'lesson': request.form.get('lesson'),
-            'mcq': request.form.get('mcq'),
-            'essay': request.form.get('essay')
-        }
-
-        exam = generate_exam(text, exam_details)
-        return jsonify({'status': 'success', 'exam': exam})
+        exam = response.choices[0].message.content
+        return jsonify(exam)
 
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'حصلت مشكلة: {str(e)}'})
+        print(e)
+        return jsonify({"error": "الملف كبير أو السيرفر مشغول. جرب ملف أصغر"}), 500
 
 if __name__ == '__main__':
     app.run()
